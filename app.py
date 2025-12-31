@@ -8,29 +8,153 @@ import json
 from openai import OpenAI
 
 # Page config
-st.set_page_config(page_title="Local AI Chatbot", page_icon="🤖", layout="wide")
+st.set_page_config(page_title="EtherChat | Local AI", page_icon="🔮", layout="wide")
 
-# Custom CSS - Modern Dark Theme
-st.markdown("""
+# Helper to load local images as base64 for CSS background
+def get_base64_of_bin_file(bin_file):
+    with open(bin_file, 'rb') as f:
+        data = f.read()
+    return base64.b64encode(data).decode()
+
+# Background and icon paths (update these with the newly generated ones)
+bg_path = r"C:/Users/hemra/.gemini/antigravity/brain/71ed8a64-d452-4453-9152-78561772a936/fantasy_bg_premium_1767197253696.png"
+icon_path = r"C:/Users/hemra/.gemini/antigravity/brain/71ed8a64-d452-4453-9152-78561772a936/ai_decorative_icon_1767197271843.png"
+
+try:
+    bg_base64 = get_base64_of_bin_file(bg_path)
+    icon_base64 = get_base64_of_bin_file(icon_path)
+except:
+    bg_base64 = ""
+    icon_base64 = ""
+
+# Custom CSS - Stripe-style Glassmorphism + Fantasy Theme
+st.markdown(f"""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap');
     
-    .stApp { background-color: #0e1117; font-family: 'Inter', sans-serif; color: #e0e0e0; }
-    h1, h2, h3 { background: linear-gradient(90deg, #4da6ff, #9966ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 700 !important; }
-    [data-testid="stSidebar"] { background-color: #161b22; border-right: 1px solid rgba(255, 255, 255, 0.1); }
-    .stChatMessage { border-radius: 12px; padding: 1rem; margin-bottom: 0.5rem; border: 1px solid rgba(255, 255, 255, 0.05); }
-    [data-testid="stChatMessage"]:nth-child(even) { background-color: rgba(77, 166, 255, 0.1); border-left: 3px solid #4da6ff; }
-    [data-testid="stChatMessage"]:nth-child(odd) { background-color: rgba(153, 102, 255, 0.1); border-right: 3px solid #9966ff; }
-    .stTextInput input, .stTextArea textarea { background-color: #1e2329 !important; border: 1px solid rgba(255, 255, 255, 0.2) !important; color: #fff !important; border-radius: 8px !important; }
-    .stTextInput input:focus, .stTextArea textarea:focus { border-color: #4da6ff !important; box-shadow: 0 0 0 1px #4da6ff !important; }
-    .stButton button { background-color: #21262d; border: 1px solid rgba(255, 255, 255, 0.2); color: #e0e0e0; transition: all 0.2s ease; }
-    .stButton button:hover { border-color: #4da6ff; color: #4da6ff; }
-    img { border-radius: 8px; }
-    .stStatusWidget { background-color: #1e2329 !important; border-color: #2f363d !important; }
+    :root {{
+        --glass-bg: rgba(13, 17, 23, 0.7);
+        --glass-border: rgba(255, 255, 255, 0.1);
+        --accent-purple: #9966ff;
+        --accent-blue: #4da6ff;
+        --text-main: #e6edf3;
+    }}
+
+    .stApp {{
+        background-image: linear-gradient(rgba(13, 17, 23, 0.8), rgba(13, 17, 23, 0.8)), url("data:image/png;base64,{bg_base64}");
+        background-size: cover;
+        background-position: center;
+        background-attachment: fixed;
+        font-family: 'Outfit', sans-serif;
+        color: var(--text-main);
+    }}
+
+    /* Hide default Streamlit style */
+    [data-testid="stHeader"] {{ background: transparent; }}
+    [data-testid="stSidebar"] {{
+        background: rgba(20, 24, 33, 0.8) !important;
+        backdrop-filter: blur(20px);
+        border-right: 1px solid var(--glass-border);
+    }}
+
+    /* Premium Heading */
+    .premium-header {{
+        background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+        text-align: center;
+        letter-spacing: -1px;
+    }}
+
+    /* Message Styling */
+    .stChatMessage {{
+        background: var(--glass-bg) !important;
+        backdrop-filter: blur(10px);
+        border: 1px solid var(--glass-border) !important;
+        border-radius: 20px !important;
+        padding: 1.5rem !important;
+        margin-bottom: 1rem !important;
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+        transition: transform 0.2s ease;
+    }}
+    .stChatMessage:hover {{
+        transform: translateY(-2px);
+        border-color: rgba(255, 255, 255, 0.2) !important;
+    }}
+
+    /* Input & Buttons (Stripe Like) */
+    .stTextInput input, .stTextArea textarea, .stChatInput input {{
+        background-color: rgba(255, 255, 255, 0.05) !important;
+        border: 1px solid var(--glass-border) !important;
+        border-radius: 12px !important;
+        color: white !important;
+        padding: 12px 16px !important;
+        transition: all 0.3s ease;
+    }}
+    .stTextInput input:focus {{
+        border-color: var(--accent-blue) !important;
+        box-shadow: 0 0 0 2px rgba(77, 166, 255, 0.2) !important;
+    }}
+
+    /* Custom Button Style */
+    .stButton button {{
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
+        border: 1px solid var(--glass-border);
+        border-radius: 12px;
+        color: white;
+        font-weight: 600;
+        padding: 0.5rem 1rem;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }}
+    .stButton button:hover {{
+        background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+        border-color: transparent;
+        transform: scale(1.02);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+    }}
+
+    /* Sidebar Model Manager Cards */
+    .status-card {{
+        padding: 1rem;
+        border-radius: 15px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--glass-border);
+        margin-bottom: 1rem;
+    }}
+
+    /* Sidebar AI Icon */
+    .ai-orb {{
+        width: 120px;
+        display: block;
+        margin: 0 auto 1.5rem;
+        filter: drop-shadow(0 0 20px rgba(153, 102, 255, 0.4));
+        animation: float 6s ease-in-out infinite;
+    }}
+
+    @keyframes float {{
+        0% {{ transform: translateY(0px); }}
+        50% {{ transform: translateY(-10px); }}
+        100% {{ transform: translateY(0px); }}
+    }}
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {{ width: 8px; }}
+    ::-webkit-scrollbar-track {{ background: transparent; }}
+    ::-webkit-scrollbar-thumb {{
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+    }}
+    ::-webkit-scrollbar-thumb:hover {{ background: rgba(255, 255, 255, 0.2); }}
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🤖 Local AI Chatbot")
+# === SIDEBAR LOGO & TITLE ===
+with st.sidebar:
+    st.markdown(f'<img src="data:image/png;base64,{icon_base64}" class="ai-orb">', unsafe_allow_html=True)
+    st.markdown('<div style="text-align: center; font-size: 1.5rem; font-weight: 700; margin-bottom: 2rem;">EtherChat</div>', unsafe_allow_html=True)
 
 # === HELPER FUNCTIONS ===
 
@@ -54,31 +178,19 @@ def extract_pdf_text(uploaded_file):
         st.error(f"Failed to read PDF: {str(e)}")
         return None
 
-# LMS CLI Helpers with ROBUST State checking
 def get_lms_models():
-    """
-    Parses 'lms ls' output to get a list of available models.
-    """
     try:
-        # Run lms ls
         result = subprocess.run("lms ls", shell=True, capture_output=True, text=True, encoding='utf-8')
         lines = result.stdout.split('\n')
         models = []
-        
-        # Output headers etc.
         for line in lines:
             line = line.strip()
             if not line: continue
-            
-            # Skip headers or informational lines
             if "LLM" in line and "ARCH" in line: continue 
-            if "You have" in line and "models" in line: continue
-            
+            if "You have" in line: continue
             parts = line.split()
-            if len(parts) >= 2:
-                if parts[0] in ["EMBEDDING", "identifier"]: continue
+            if len(parts) >= 2 and ("GB" in line or "MB" in line):
                 models.append(parts[0])
-                
         return models
     except:
         return []
@@ -92,9 +204,9 @@ def check_connection(base_url):
     except:
         return None, None
 
-# === MAIN CHAT APP ===
+# === MAIN APP LOGIC ===
 
-# Initialize session state (retaining chat history)
+# Initialize session state
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "is_unloading" not in st.session_state:
@@ -102,45 +214,50 @@ if "is_unloading" not in st.session_state:
 if "unload_start_time" not in st.session_state:
     st.session_state.unload_start_time = 0
 
-# === SIDEBAR ===
+# Sidebar content
 with st.sidebar:
-    st.header("⚙️ System Control")
+    st.header("⚙️ Configuration")
     base_url = st.text_input("LM Studio URL", "http://localhost:1234/v1")
     
     st.divider()
     
-    # Check current connection state
     client_conn, active_model_id = check_connection(base_url)
 
-    # 0. Handle Unloading Transition State
+    # Handle Unloading Transition
     if st.session_state.is_unloading:
-        # Check if we've been waiting too long (> 10s)
         time_waiting = time.time() - st.session_state.unload_start_time
         if time_waiting > 10:
             st.session_state.is_unloading = False
-            st.error("⚠️ Unload timed out. Please check LM Studio manually.")
+            st.error("⚠️ Unload timed out.")
             st.rerun()
             
         if active_model_id:
-            st.warning(f"⏳ Unloading {active_model_id}...\n({int(10 - time_waiting)}s remaining)")
+            st.warning(f"⏳ Unloading Model...\n({int(10 - time_waiting)}s)")
             time.sleep(1) 
             st.rerun()    
         else:
-            # Done!
             st.session_state.is_unloading = False
-            st.success("✅ Model UNLOADED")
+            st.success("✅ System Purged")
             time.sleep(1)
             st.rerun()
 
-    # 1. Visual Status Indicator
-    if client_conn and active_model_id:
-        st.success(f"🟢 **Active Model**\n\n`{active_model_id}`")
+    # Status Cards
+    if client_conn and active_model_id and not st.session_state.is_unloading:
+        st.markdown(f"""
+        <div class="status-card" style="border-left: 4px solid var(--accent-blue);">
+            <div style="font-size: 0.8rem; color: #888;">INTERNAL LINK ACTIVE</div>
+            <div style="font-weight: 600; color: var(--accent-blue);">{active_model_id}</div>
+        </div>
+        """, unsafe_allow_html=True)
     else:
-        st.error("🔴 **No Model Loaded**")
+        st.markdown(f"""
+        <div class="status-card" style="border-left: 4px solid #ff4d4d; opacity: 0.7;">
+            <div style="font-size: 0.8rem; color: #888;">NODE DISCONNECTED</div>
+            <div style="font-weight: 600; color: #ff4d4d;">No Neural Link</div>
+        </div>
+        """, unsafe_allow_html=True)
         
-    st.subheader("Model Manager")
-    
-    # 2. Model Selector
+    st.subheader("Neural Core")
     known_models = get_lms_models()
     if not known_models:
         known_models = ["qwen/qwen3-4b-thinking-2507", "llama-3.1-8b-lexi-uncensored-v2", "dolphin-2.9-llama3-8b"]
@@ -148,24 +265,20 @@ with st.sidebar:
     default_ix = 0
     if active_model_id:
         for i, m in enumerate(known_models):
-            if active_model_id == m or active_model_id in m or m in active_model_id:
+            if active_model_id in m or m in active_model_id:
                 default_ix = i
                 break
                 
-    selected_load = st.selectbox("Choose Model:", known_models, index=default_ix)
+    selected_load = st.selectbox("Select Core:", known_models, index=default_ix)
     
-    # 3. Control Buttons
     col1, col2 = st.columns(2)
-    
     with col1:
-        if st.button("🟢 Load", use_container_width=True):
-            with st.spinner(f"Loading {selected_load}..."):
+        if st.button("� Load", use_container_width=True):
+            with st.spinner("Initiating Link..."):
                 st.session_state.is_unloading = False
                 subprocess.run("lms unload --all", shell=True)
                 time.sleep(1)
                 subprocess.run(f'lms load "{selected_load}"', shell=True)
-                
-                # Wait for load
                 start_wait = time.time()
                 while time.time() - start_wait < 45:
                     _, check_id = check_connection(base_url)
@@ -174,59 +287,50 @@ with st.sidebar:
                 st.rerun()
 
     with col2:
-        if st.button("🔴 Unload", use_container_width=True):
+        if st.button("� Purge", use_container_width=True):
              st.session_state.is_unloading = True
              st.session_state.unload_start_time = time.time()
              subprocess.run("lms unload --all", shell=True)
              st.rerun()
 
-    # Recovery Button if stuck
     if st.session_state.is_unloading:
-        if st.button("Clear Stuck State", type="primary"):
+        if st.button("Reset Sensor Loop"):
             st.session_state.is_unloading = False
             st.rerun()
 
     st.divider()
-    system_prompt = st.text_area("System Prompt", "You are a helpful AI assistant.")
+    system_prompt = st.text_area("System Directives", "You are a mystical AI advisor in a high-tech fantasy realm.")
     model_id = active_model_id if active_model_id else "local-model"
 
+# Main Chat Display
+st.markdown('<div class="premium-header">EtherChat Global Terminal</div>', unsafe_allow_html=True)
 
-# Display chat history
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
         if "image" in message and message["image"]:
             st.image(base64.b64decode(message["image"]))
 
-# Input Area controls
-with st.expander("📎 Add Attachment (Image/PDF)", expanded=False):
-    uploaded_file = st.file_uploader("Choose file", type=["png", "jpg", "jpeg", "pdf"], label_visibility="collapsed")
+with st.expander("📎 Augment Query (Image/PDF)", expanded=False):
+    uploaded_file = st.file_uploader("Upload Fragment", type=["png", "jpg", "jpeg", "pdf"], label_visibility="collapsed")
 
-if prompt := st.chat_input("Type your message..."):
-    
+if prompt := st.chat_input("Relay message to the core..."):
     encoded_img = None
     pdf_text = None
-    warning_msg = None
     
-    # 1. Validation Logic
     if uploaded_file:
         file_type = uploaded_file.type
         if "image" in file_type:
             if not is_vision_model(model_id):
-                warning_msg = "⚠️ Model likely doesn't support vision. Sending text only."
+                st.toast("⚠️ Core lacks Vision. Sending text only.", icon="⚠️")
             else:
                 encoded_img = encode_image(uploaded_file)
         elif "pdf" in file_type:
-            with st.spinner("Processing PDF..."):
+            with st.spinner("Extracting Knowledge..."):
                 pdf_text = extract_pdf_text(uploaded_file)
                 if pdf_text:
-                    prompt = f"Reference PDF Content:\n{pdf_text}\n\n---\nUser Query: {prompt}"
-                else:
-                    warning_msg = "⚠️ PDF empty or failed."
+                    prompt = f"Reference Fragment:\n{pdf_text}\n\n---\nRelay: {prompt}"
 
-    if warning_msg: st.toast(warning_msg, icon="⚠️")
-
-    # 2. Add User Message
     new_message = {"role": "user", "content": prompt}
     if encoded_img: new_message["image"] = encoded_img
     st.session_state.messages.append(new_message)
@@ -234,15 +338,14 @@ if prompt := st.chat_input("Type your message..."):
     with st.chat_message("user"):
         display_prompt = prompt
         if pdf_text and len(pdf_text) > 200:
-             display_prompt = prompt.split("User Query:")[1].strip() if "User Query:" in prompt else prompt
-             st.info(f"📄 PDF Attached")
+             display_prompt = prompt.split("Relay:")[1].strip() if "Relay:" in prompt else prompt
+             st.info(f"� Knowledge Scroll Attached")
         st.markdown(display_prompt)
         if encoded_img: st.image(uploaded_file)
 
-    # 3. Generate Response
     with st.chat_message("assistant"):
         if not active_model_id:
-            st.error("⛔ No Model Loaded. Please load a model from the sidebar first.")
+            st.error("⛔ System Offline. Load a Core in the configuration hub.")
             st.stop()
             
         message_placeholder = st.empty()
@@ -265,7 +368,7 @@ if prompt := st.chat_input("Type your message..."):
                 model=model_id,
                 messages=api_messages,
                 stream=True,
-                temperature=0.7,
+                temperature=0.8,
             )
             
             response_buffer = "" 
@@ -283,7 +386,7 @@ if prompt := st.chat_input("Type your message..."):
                                     message_placeholder.markdown(full_response + "▌")
                                 response_buffer = "" 
                                 is_thinking = True
-                                status_placeholder.status("Thinking...", expanded=False)
+                                status_placeholder.status("Astral Reasoning...", expanded=False)
                             elif not any("<think>".startswith(response_buffer[-i:]) for i in range(1, 8)):
                                 full_response += response_buffer
                                 message_placeholder.markdown(full_response + "▌")
@@ -303,11 +406,11 @@ if prompt := st.chat_input("Type your message..."):
             
             duration = time.time() - start_time
             tps = token_count / duration if duration > 0 else 0
-            metrics_msg = f"<p style='color: #888; font-size: 0.8em; margin-top: 0.5em;'>Generated {token_count} tokens • {tps:.2f} tok/s • {duration:.2f}s</p>"
+            metrics_msg = f"<p style='color: #888; font-size: 0.8em; margin-top: 0.5em;'>Resonated {token_count} echoes • {tps:.2f} e/s • {duration:.2f}s</p>"
             message_placeholder.markdown(full_response, unsafe_allow_html=True)
             st.markdown(metrics_msg, unsafe_allow_html=True)
             
             st.session_state.messages.append({"role": "assistant", "content": full_response})
 
         except Exception as e:
-            st.error(f"Error calling API: {str(e)}")
+            st.error(f"Distortion detected: {str(e)}")
