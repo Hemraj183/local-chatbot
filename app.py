@@ -109,19 +109,13 @@ with st.sidebar:
             status_msg.success(f"🟢 Active: {active_model_id}")
             
             if st.button("🔴 Unload Model (Free RAM)", type="primary", use_container_width=True):
+                # FIRE AND FORGET LOGIC
+                # Assuming if the user clicks this, they want it gone.
                 with st.spinner("Disconnecting Neural Link..."):
                     subprocess.run("lms unload --all", shell=True)
-                    
-                    # Wait loop
-                    if wait_for_model_state(client_conn, should_be_loaded=False, timeout=20):
-                        status_msg.error("🔴 No Model Loaded") # Instant feedback
-                        time.sleep(0.5)
-                        st.rerun()
-                    else:
-                        # Fallback for slow environments
-                        st.warning("Unload taking a while... Reloading UI.")
-                        time.sleep(2) 
-                        st.rerun()
+                    time.sleep(3) # Give server 3s to clear RAM
+                    st.toast("Model Unloaded successfully!", icon="💥")
+                    st.rerun()
         else:
             # === RED STATE: Inactive ===
             status_msg.error("🔴 No Model Loaded")
@@ -136,11 +130,17 @@ with st.sidebar:
             if st.button("🟢 Load Model", type="secondary", use_container_width=True):
                 with st.spinner(f"Initiating {selected_load}..."):
                     subprocess.run(f'lms load "{selected_load}"', shell=True)
-                    if wait_for_model_state(client_conn, should_be_loaded=True, timeout=45):
+                    
+                    # We still wait for load, because we need it ready before chatting
+                    # Simple inline wait loop
+                    start_load = time.time()
+                    while time.time() - start_load < 45:
+                        _, new_id = check_connection(base_url)
+                        if new_id:
+                            break
                         time.sleep(1)
-                        st.rerun()
-                    else:
-                        st.error("Load timed out. Server might be busy.")
+                    
+                    st.rerun()
     else:
         st.warning("⚠️ Server Offline. Launch 'lms server start'.")
 
