@@ -56,31 +56,28 @@ def extract_pdf_text(uploaded_file):
 
 # LMS CLI Helpers with ROBUST State checking
 def get_lms_models():
+    """Parses 'lms ls' output rigorously."""
     try:
         result = subprocess.run("lms ls", shell=True, capture_output=True, text=True, encoding='utf-8')
         lines = result.stdout.split('\n')
         models = []
         for line in lines:
+            line = line.strip()
+            if not line: continue
+            
+            # Skip headers/info
+            if "LLM" in line and "ARCH" in line: continue 
+            if "You have" in line: continue
+            if "EMBEDDING" in line: continue # skip embeddings for chat
+            
             parts = line.split()
-            if len(parts) >= 3 and ("GB" in line or "MB" in line) and "SIZE" not in line:
-                models.append(parts[0])
+            if len(parts) >= 2:
+                # Basic check: first part is model name, line contains size indicators
+                if "GB" in line or "MB" in line:
+                    models.append(parts[0])
         return models
     except:
         return []
-
-def wait_for_model_state(client, should_be_loaded=True, timeout=15):
-    """Waits until a model is loaded (or unloaded)"""
-    start = time.time()
-    while time.time() - start < timeout:
-        try:
-            models = client.models.list()
-            is_loaded = len(models.data) > 0
-            if is_loaded == should_be_loaded:
-                return True
-        except:
-            pass
-        time.sleep(0.5)
-    return False
 
 def check_connection(base_url):
     try:
@@ -101,55 +98,58 @@ with st.sidebar:
     # 1. Check Status
     client_conn, active_model_id = check_connection(base_url)
     
-    # 2. visual Status Indicator
+    # 2. Visual Status Indicator
     if client_conn and active_model_id:
-        st.success(f"🟢 **Active Model**\n\n{active_model_id}")
+        # GREEN STATE
+        st.success(f"🟢 **Active Model**\n\n`{active_model_id}`")
     else:
+        # RED STATE
         st.error("🔴 **No Model Loaded**")
         
     st.subheader("Model Manager")
     
     # 3. Model Selector (Always Visible)
-    # Fetch available models from CLI or use defaults
     known_models = get_lms_models()
     if not known_models:
         known_models = ["qwen/qwen3-4b-thinking-2507", "llama-3.1-8b-lexi-uncensored-v2", "dolphin-2.9-llama3-8b"]
     
-    # Try to respect current selection
+    # Logic to auto-select the active model in the dropdown
     default_ix = 0
     if active_model_id:
         for i, m in enumerate(known_models):
-            if active_model_id in m or m in active_model_id:
+            # Check for exact match or substring match (some CLIs truncate or format differently)
+            if active_model_id == m or active_model_id in m or m in active_model_id:
                 default_ix = i
                 break
                 
     selected_load = st.selectbox("Choose Model:", known_models, index=default_ix)
     
-    # 4. Control Buttons (Side by Side)
-    col_load, col_unload = st.columns(2)
+    # 4. Control Buttons
+    col1, col2 = st.columns(2)
     
-    with col_load:
+    with col1:
         if st.button("🟢 Load", use_container_width=True):
             with st.spinner(f"Loading {selected_load}..."):
-                # Safety: Unload any existing first to prevent conflicts
+                # Safety first: Unload all
                 subprocess.run("lms unload --all", shell=True)
                 time.sleep(1)
+                
+                # Load new
                 subprocess.run(f'lms load "{selected_load}"', shell=True)
                 
-                # Wait for server to pick it up
+                # Wait for readiness
                 start_wait = time.time()
-                while time.time() - start_wait < 30:
+                while time.time() - start_wait < 45:
                     _, check_id = check_connection(base_url)
-                    if check_id:
-                        break
+                    if check_id: break
                     time.sleep(1)
                 st.rerun()
 
-    with col_unload:
+    with col2:
         if st.button("🔴 Unload", use_container_width=True):
              with st.spinner("Unloading..."):
                  subprocess.run("lms unload --all", shell=True)
-                 time.sleep(2) # Short buffer
+                 time.sleep(2) # Fire and forget wait
                  st.rerun()
 
     st.divider()
@@ -158,7 +158,7 @@ with st.sidebar:
 
 # === MAIN CHAT APP ===
 
-# Initialize session state
+# Initialize session state (retaining chat history)
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -169,7 +169,7 @@ for message in st.session_state.messages:
         if "image" in message and message["image"]:
             st.image(base64.b64decode(message["image"]))
 
-# Input Area
+# Input Area controls
 with st.expander("📎 Add Attachment (Image/PDF)", expanded=False):
     uploaded_file = st.file_uploader("Choose file", type=["png", "jpg", "jpeg", "pdf"], label_visibility="collapsed")
 
@@ -204,7 +204,6 @@ if prompt := st.chat_input("Type your message..."):
     
     with st.chat_message("user"):
         display_prompt = prompt
-        # Hide huge PDF text block from UI
         if pdf_text and len(pdf_text) > 200:
              display_prompt = prompt.split("User Query:")[1].strip() if "User Query:" in prompt else prompt
              st.info(f"📄 PDF Attached")
@@ -213,7 +212,7 @@ if prompt := st.chat_input("Type your message..."):
 
     # 3. Generate Response
     with st.chat_message("assistant"):
-        # BLOCKING CHECK: Ensure model is actually loaded before trying to chat
+        # BLOCKING CHECK: No Model = No Chat
         if not active_model_id:
             st.error("⛔ No Model Loaded. Please load a model from the sidebar first.")
             st.stop()
