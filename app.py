@@ -7,7 +7,7 @@ import subprocess
 import json
 from openai import OpenAI
 
-# Page config
+# Page config - EtherChat Premium
 st.set_page_config(page_title="EtherChat | Local AI", page_icon="🔮", layout="wide")
 
 # Helper to load local images as base64 for CSS background
@@ -16,7 +16,7 @@ def get_base64_of_bin_file(bin_file):
         data = f.read()
     return base64.b64encode(data).decode()
 
-# Background and icon paths (update these with the newly generated ones)
+# Background and icon paths
 bg_path = r"C:/Users/hemra/.gemini/antigravity/brain/71ed8a64-d452-4453-9152-78561772a936/fantasy_bg_premium_1767197253696.png"
 icon_path = r"C:/Users/hemra/.gemini/antigravity/brain/71ed8a64-d452-4453-9152-78561772a936/ai_decorative_icon_1767197271843.png"
 
@@ -27,7 +27,7 @@ except:
     bg_base64 = ""
     icon_base64 = ""
 
-# Custom CSS - Stripe-style Glassmorphism + Fantasy Theme
+# Custom CSS - Responsive Stripe-style Glassmorphism + Fantasy Theme
 st.markdown(f"""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap');
@@ -47,6 +47,13 @@ st.markdown(f"""
         background-attachment: fixed;
         font-family: 'Outfit', sans-serif;
         color: var(--text-main);
+    }}
+
+    /* Global Responsive Adjustments */
+    @media (max-width: 768px) {{
+        .premium-header {{ font-size: 1.8rem !important; }}
+        .stChatMessage {{ padding: 1rem !important; border-radius: 15px !important; }}
+        [data-testid="stSidebar"] {{ width: 100% !important; }}
     }}
 
     /* Hide default Streamlit style */
@@ -92,31 +99,27 @@ st.markdown(f"""
         border-radius: 12px !important;
         color: white !important;
         padding: 12px 16px !important;
-        transition: all 0.3s ease;
-    }}
-    .stTextInput input:focus {{
-        border-color: var(--accent-blue) !important;
-        box-shadow: 0 0 0 2px rgba(77, 166, 255, 0.2) !important;
     }}
 
     /* Custom Button Style */
     .stButton button {{
-        background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
+        background: rgba(255, 255, 255, 0.05);
         border: 1px solid var(--glass-border);
         border-radius: 12px;
         color: white;
         font-weight: 600;
-        padding: 0.5rem 1rem;
+        padding: 0.6rem 1rem;
+        width: 100%;
+        display: block;
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }}
     .stButton button:hover {{
         background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
         border-color: transparent;
         transform: scale(1.02);
-        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
     }}
 
-    /* Sidebar Model Manager Cards */
+    /* Sidebar Status Cards */
     .status-card {{
         padding: 1rem;
         border-radius: 15px;
@@ -127,7 +130,8 @@ st.markdown(f"""
 
     /* Sidebar AI Icon */
     .ai-orb {{
-        width: 120px;
+        width: 100px;
+        max-width: 40%;
         display: block;
         margin: 0 auto 1.5rem;
         filter: drop-shadow(0 0 20px rgba(153, 102, 255, 0.4));
@@ -141,13 +145,11 @@ st.markdown(f"""
     }}
 
     /* Scrollbar */
-    ::-webkit-scrollbar {{ width: 8px; }}
-    ::-webkit-scrollbar-track {{ background: transparent; }}
+    ::-webkit-scrollbar {{ width: 6px; }}
     ::-webkit-scrollbar-thumb {{
         background: rgba(255, 255, 255, 0.1);
         border-radius: 10px;
     }}
-    ::-webkit-scrollbar-thumb:hover {{ background: rgba(255, 255, 255, 0.2); }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -206,7 +208,6 @@ def check_connection(base_url):
 
 # === MAIN APP LOGIC ===
 
-# Initialize session state
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "is_unloading" not in st.session_state:
@@ -214,7 +215,6 @@ if "is_unloading" not in st.session_state:
 if "unload_start_time" not in st.session_state:
     st.session_state.unload_start_time = 0
 
-# Sidebar content
 with st.sidebar:
     st.header("⚙️ Configuration")
     base_url = st.text_input("LM Studio URL", "http://localhost:1234/v1")
@@ -223,7 +223,6 @@ with st.sidebar:
     
     client_conn, active_model_id = check_connection(base_url)
 
-    # Handle Unloading Transition
     if st.session_state.is_unloading:
         time_waiting = time.time() - st.session_state.unload_start_time
         if time_waiting > 10:
@@ -232,7 +231,7 @@ with st.sidebar:
             st.rerun()
             
         if active_model_id:
-            st.warning(f"⏳ Unloading Model...\n({int(10 - time_waiting)}s)")
+            st.warning(f"⏳ Purging Core...\n({int(10 - time_waiting)}s)")
             time.sleep(1) 
             st.rerun()    
         else:
@@ -241,23 +240,22 @@ with st.sidebar:
             time.sleep(1)
             st.rerun()
 
-    # Status Cards
     if client_conn and active_model_id and not st.session_state.is_unloading:
         st.markdown(f"""
         <div class="status-card" style="border-left: 4px solid var(--accent-blue);">
-            <div style="font-size: 0.8rem; color: #888;">INTERNAL LINK ACTIVE</div>
-            <div style="font-weight: 600; color: var(--accent-blue);">{active_model_id}</div>
+            <div style="font-size: 0.7rem; color: #888; letter-spacing: 1px;">NEURAL LINK ACTIVE</div>
+            <div style="font-weight: 700; color: var(--accent-blue); font-size: 0.9rem; margin-top: 4px;">{active_model_id}</div>
         </div>
         """, unsafe_allow_html=True)
     else:
         st.markdown(f"""
-        <div class="status-card" style="border-left: 4px solid #ff4d4d; opacity: 0.7;">
-            <div style="font-size: 0.8rem; color: #888;">NODE DISCONNECTED</div>
-            <div style="font-weight: 600; color: #ff4d4d;">No Neural Link</div>
+        <div class="status-card" style="border-left: 4px solid #ff4d4d; background: rgba(255, 77, 77, 0.05);">
+            <div style="font-size: 0.7rem; color: #888; letter-spacing: 1px;">CORE DISCONNECTED</div>
+            <div style="font-weight: 700; color: #ff4d4d; font-size: 0.9rem; margin-top: 4px;">No Active Link</div>
         </div>
         """, unsafe_allow_html=True)
         
-    st.subheader("Neural Core")
+    st.subheader("Core Selection")
     known_models = get_lms_models()
     if not known_models:
         known_models = ["qwen/qwen3-4b-thinking-2507", "llama-3.1-8b-lexi-uncensored-v2", "dolphin-2.9-llama3-8b"]
@@ -269,12 +267,13 @@ with st.sidebar:
                 default_ix = i
                 break
                 
-    selected_load = st.selectbox("Select Core:", known_models, index=default_ix)
+    selected_load = st.selectbox("Choose Fragment:", known_models, index=default_ix)
     
+    # Responsive Button Layout
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("� Load", use_container_width=True):
-            with st.spinner("Initiating Link..."):
+        if st.button("🔮 Load Core", use_container_width=True):
+            with st.spinner("Linking..."):
                 st.session_state.is_unloading = False
                 subprocess.run("lms unload --all", shell=True)
                 time.sleep(1)
@@ -287,7 +286,7 @@ with st.sidebar:
                 st.rerun()
 
     with col2:
-        if st.button("� Purge", use_container_width=True):
+        if st.button("💀 Purge Core", use_container_width=True):
              st.session_state.is_unloading = True
              st.session_state.unload_start_time = time.time()
              subprocess.run("lms unload --all", shell=True)
@@ -339,7 +338,7 @@ if prompt := st.chat_input("Relay message to the core..."):
         display_prompt = prompt
         if pdf_text and len(pdf_text) > 200:
              display_prompt = prompt.split("Relay:")[1].strip() if "Relay:" in prompt else prompt
-             st.info(f"� Knowledge Scroll Attached")
+             st.info(f"📜 Knowledge Scroll Attached")
         st.markdown(display_prompt)
         if encoded_img: st.image(uploaded_file)
 
