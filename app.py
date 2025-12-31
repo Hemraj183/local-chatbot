@@ -92,6 +92,14 @@ def check_connection(base_url):
     except:
         return None, None
 
+# === MAIN CHAT APP ===
+
+# Initialize session state (retaining chat history)
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "is_unloading" not in st.session_state:
+    st.session_state.is_unloading = False
+
 # === SIDEBAR ===
 with st.sidebar:
     st.header("⚙️ System Control")
@@ -99,20 +107,34 @@ with st.sidebar:
     
     st.divider()
     
-    # 1. Check Status
+    # 0. Handle Unloading Transition State
+    # Check connection first to determine real state
     client_conn, active_model_id = check_connection(base_url)
-    
-    # 2. Visual Status Indicator
-    if client_conn and active_model_id:
+
+    # If we are in 'unloading' mode, we override the display to show progress
+    # and keep checking until it's actually gone.
+    if st.session_state.is_unloading:
+        # If active_model_id is still present, we are still waiting
+        if active_model_id:
+            st.warning(f"⏳ Unloading {active_model_id}...")
+            time.sleep(1) # Wait a bit before checking again
+            st.rerun()    # Loop until gone
+        else:
+            # It's gone! Clear flag and let the normal flow show the Red state
+            st.session_state.is_unloading = False
+            st.rerun()
+
+    # 1. Visual Status Indicator (Normal Flow)
+    if client_conn and active_model_id and not st.session_state.is_unloading:
         # GREEN STATE
         st.success(f"🟢 **Active Model**\n\n`{active_model_id}`")
     else:
-        # RED STATE
+        # RED STATE (or if manually unloading just now)
         st.error("🔴 **No Model Loaded**")
         
     st.subheader("Model Manager")
     
-    # 3. Model Selector (Always Visible)
+    # 2. Model Selector (Always Visible)
     known_models = get_lms_models()
     if not known_models:
         known_models = ["qwen/qwen3-4b-thinking-2507", "llama-3.1-8b-lexi-uncensored-v2", "dolphin-2.9-llama3-8b"]
@@ -127,12 +149,15 @@ with st.sidebar:
                 
     selected_load = st.selectbox("Choose Model:", known_models, index=default_ix)
     
-    # 4. Control Buttons
+    # 3. Control Buttons
     col1, col2 = st.columns(2)
     
     with col1:
         if st.button("🟢 Load", use_container_width=True):
             with st.spinner(f"Loading {selected_load}..."):
+                # Reset unloading state if it was stuck
+                st.session_state.is_unloading = False
+                
                 # Safety first: Unload all
                 subprocess.run("lms unload --all", shell=True)
                 time.sleep(1)
@@ -150,27 +175,15 @@ with st.sidebar:
 
     with col2:
         if st.button("🔴 Unload", use_container_width=True):
-             with st.spinner("Unloading..."):
-                 subprocess.run("lms unload --all", shell=True)
-                 
-                 # Verify unload (Poll until gone)
-                 start_wait = time.time()
-                 while time.time() - start_wait < 10:
-                     _, check_id = check_connection(base_url)
-                     if not check_id: break # Confirmed gone
-                     time.sleep(1)
-                 
-                 st.rerun()
+             # Trigger the transition state
+             st.session_state.is_unloading = True
+             subprocess.run("lms unload --all", shell=True)
+             st.rerun()
 
     st.divider()
     system_prompt = st.text_area("System Prompt", "You are a helpful AI assistant.")
     model_id = active_model_id if active_model_id else "local-model"
 
-# === MAIN CHAT APP ===
-
-# Initialize session state (retaining chat history)
-if "messages" not in st.session_state:
-    st.session_state.messages = []
 
 # Display chat history
 for message in st.session_state.messages:
