@@ -111,12 +111,17 @@ with st.sidebar:
             if st.button("🔴 Unload Model (Free RAM)", type="primary", use_container_width=True):
                 with st.spinner("Disconnecting Neural Link..."):
                     subprocess.run("lms unload --all", shell=True)
-                    if wait_for_model_state(client_conn, should_be_loaded=False, timeout=10):
+                    
+                    # Wait loop
+                    if wait_for_model_state(client_conn, should_be_loaded=False, timeout=20):
                         status_msg.error("🔴 No Model Loaded") # Instant feedback
                         time.sleep(0.5)
                         st.rerun()
                     else:
-                        st.error("Unload timed out. Try again.")
+                        # Fallback for slow environments
+                        st.warning("Unload taking a while... Reloading UI.")
+                        time.sleep(2) 
+                        st.rerun()
         else:
             # === RED STATE: Inactive ===
             status_msg.error("🔴 No Model Loaded")
@@ -131,7 +136,7 @@ with st.sidebar:
             if st.button("🟢 Load Model", type="secondary", use_container_width=True):
                 with st.spinner(f"Initiating {selected_load}..."):
                     subprocess.run(f'lms load "{selected_load}"', shell=True)
-                    if wait_for_model_state(client_conn, should_be_loaded=True, timeout=30):
+                    if wait_for_model_state(client_conn, should_be_loaded=True, timeout=45):
                         time.sleep(1)
                         st.rerun()
                     else:
