@@ -2,7 +2,7 @@
 
 A beautiful, high-tech fantasy-themed chatbot interface for **LM Studio**. Built with Streamlit and featuring Stripe-inspired glassmorphism, background art, and robust model management.
 
-![EtherChat Full View](screenshot_full.png)
+![EtherChat Full View](assets/screenshot_full.png)
 
 ## ✨ Features
 
@@ -25,7 +25,7 @@ A beautiful, high-tech fantasy-themed chatbot interface for **LM Studio**. Built
 ## 📸 Screenshots
 
 ### Global Terminal (Chat)
-![Chat Screenshot](screenshot_chat.png)
+![Chat Screenshot](assets/screenshot_chat.png)
 
 ## 🛡️ Model Control
 The sidebar provides a "Neural Core" section where you can:
