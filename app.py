@@ -57,14 +57,11 @@ def extract_pdf_text(uploaded_file):
 # LMS CLI Helpers with ROBUST State checking
 def get_lms_models():
     try:
-        # Use simple 'lms ls' text output parsing because JSON might be experimental or differ in versions
         result = subprocess.run("lms ls", shell=True, capture_output=True, text=True, encoding='utf-8')
         lines = result.stdout.split('\n')
         models = []
         for line in lines:
             parts = line.split()
-            # Valid model lines usually look like: "model-name   PARAMS   ARCH ..."
-            # We filter for lines that look like model entries (have size info GB/MB)
             if len(parts) >= 3 and ("GB" in line or "MB" in line) and "SIZE" not in line:
                 models.append(parts[0])
         return models
@@ -89,7 +86,6 @@ def check_connection(base_url):
     try:
         client = OpenAI(base_url=base_url, api_key="lm-studio")
         models = client.models.list()
-        # Ensure we have a valid model ID, or None if empty
         active_id = models.data[0].id if models.data else None
         return client, active_id
     except:
@@ -102,49 +98,49 @@ with st.sidebar:
     
     st.subheader("Model Manager")
     
-    # State Management
+    # State Management: Status Placeholder
+    status_msg = st.empty()
+    
     client_conn, active_model_id = check_connection(base_url)
     
     if client_conn:
         if active_model_id:
-            st.success(f"🟢 Active: {active_model_id}")
-            if st.button("🔴 Unload Model (Free RAM)", type="primary"):
-                with st.spinner("Unloading model..."):
+            # === GREEN STATE: Active ===
+            status_msg.success(f"🟢 Active: {active_model_id}")
+            
+            if st.button("🔴 Unload Model (Free RAM)", type="primary", use_container_width=True):
+                with st.spinner("Disconnecting Neural Link..."):
                     subprocess.run("lms unload --all", shell=True)
-                    # Wait for it to actually disappear
-                    if wait_for_model_state(client_conn, should_be_loaded=False):
-                        st.success("Model unloaded!")
-                        time.sleep(1)
+                    if wait_for_model_state(client_conn, should_be_loaded=False, timeout=10):
+                        status_msg.error("🔴 No Model Loaded") # Instant feedback
+                        time.sleep(0.5)
                         st.rerun()
                     else:
                         st.error("Unload timed out. Try again.")
         else:
-            st.warning("⚪ No model loaded")
+            # === RED STATE: Inactive ===
+            status_msg.error("🔴 No Model Loaded")
             
             # Load Interface
             known_models = get_lms_models()
             if not known_models:
-                # Fallback defaults if CLI fails
                 known_models = ["qwen/qwen3-4b-thinking-2507", "llama-3.1-8b-lexi-uncensored-v2", "dolphin-2.9-llama3-8b"]
             
             selected_load = st.selectbox("Select Model to Load", known_models)
             
-            if st.button("🟢 Load Model"):
-                with st.spinner(f"Loading {selected_load}..."):
+            if st.button("🟢 Load Model", type="secondary", use_container_width=True):
+                with st.spinner(f"Initiating {selected_load}..."):
                     subprocess.run(f'lms load "{selected_load}"', shell=True)
-                    # Wait for it to appear
-                    if wait_for_model_state(client_conn, should_be_loaded=True):
-                        st.success("Model loaded!")
+                    if wait_for_model_state(client_conn, should_be_loaded=True, timeout=30):
                         time.sleep(1)
                         st.rerun()
                     else:
-                        st.error("Load timed out or failed. Check LM Studio logs.")
+                        st.error("Load timed out. Server might be busy.")
     else:
-        st.error("⚠️ Server Offline. Run 'lms server start' or check connection.")
+        st.warning("⚠️ Server Offline. Launch 'lms server start'.")
 
     st.divider()
     system_prompt = st.text_area("System Prompt", "You are a helpful AI assistant.")
-    # Use active_model_id if available, otherwise just a placeholder to prevent crashes
     model_id = active_model_id if active_model_id else "local-model"
 
 # === MAIN CHAT APP ===
