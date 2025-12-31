@@ -130,10 +130,10 @@ st.markdown(f"""
 
     /* Sidebar AI Icon */
     .ai-orb {{
-        width: 100px;
+        width: 80px;
         max-width: 40%;
         display: block;
-        margin: 0 auto 1.5rem;
+        margin: 0 auto 1rem;
         filter: drop-shadow(0 0 20px rgba(153, 102, 255, 0.4));
         animation: float 6s ease-in-out infinite;
     }}
@@ -156,7 +156,7 @@ st.markdown(f"""
 # === SIDEBAR LOGO & TITLE ===
 with st.sidebar:
     st.markdown(f'<img src="data:image/png;base64,{icon_base64}" class="ai-orb">', unsafe_allow_html=True)
-    st.markdown('<div style="text-align: center; font-size: 1.5rem; font-weight: 700; margin-bottom: 2rem;">EtherChat</div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align: center; font-size: 1.5rem; font-weight: 700; margin-bottom: 1rem;">EtherChat</div>', unsafe_allow_html=True)
 
 # === HELPER FUNCTIONS ===
 
@@ -180,6 +180,7 @@ def extract_pdf_text(uploaded_file):
         st.error(f"Failed to read PDF: {str(e)}")
         return None
 
+@st.cache_data(ttl=300) # Cache for 5 mins to prevent flicker
 def get_lms_models():
     try:
         result = subprocess.run("lms ls", shell=True, capture_output=True, text=True, encoding='utf-8')
@@ -192,6 +193,7 @@ def get_lms_models():
             if "You have" in line: continue
             parts = line.split()
             if len(parts) >= 2 and ("GB" in line or "MB" in line):
+                if "embedding" in line.lower(): continue
                 models.append(parts[0])
         return models
     except:
@@ -256,6 +258,12 @@ with st.sidebar:
         """, unsafe_allow_html=True)
         
     st.subheader("Core Selection")
+    
+    # Refresh list control
+    if st.button("🔄 Sync Model List", help="Click if you downloaded new models in LM Studio"):
+        st.cache_data.clear()
+        st.rerun()
+
     known_models = get_lms_models()
     if not known_models:
         known_models = ["qwen/qwen3-4b-thinking-2507", "llama-3.1-8b-lexi-uncensored-v2", "dolphin-2.9-llama3-8b"]
@@ -269,7 +277,6 @@ with st.sidebar:
                 
     selected_load = st.selectbox("Choose Fragment:", known_models, index=default_ix)
     
-    # Responsive Button Layout
     col1, col2 = st.columns(2)
     with col1:
         if st.button("🔮 Load Core", use_container_width=True):

@@ -1,32 +1,37 @@
-# Local Chatbot with LM Studio
+# EtherChat: Premium Local AI Terminal 🔮
 
-A sleek, sci-fi themed web-based chatbot interface designed to work with local LLMs via LM Studio. This application provides a premium user experience for interacting with your locally hosted AI models.
+A beautiful, high-tech fantasy-themed chatbot interface for **LM Studio**. Built with Streamlit and featuring Stripe-inspired glassmorphism, background art, and robust model management.
 
-## Features
+![EtherChat Full View](screenshot_full.png)
 
-*   **🚀 Sci-Fi UI**: A responsive, dark-themed interface featuring glassmorphism, smooth animations, and a futuristic aesthetic.
-*   **💬 Local LLM Integration**: Connects seamlessly to LM Studio's local server API (default port 1234).
-*   **🖼️ Vision Capabilities**: Support for image uploads to chat with vision-capable models.
-*   **📊 Performance Metrics**: Real-time stats showing tokens per second, total tokens generated, and response duration.
-*   **🧠 Chain of Thought Toggle**: Option to hide raw "thinking" process for cleaner output while maintaining a visual indicator.
-*   **📱 Mobile Ready**: Fully responsive design that works great on desktop and mobile devices over the local network.
+## ✨ Features
 
-## Screenshot
+- **Premium UI**: Dark mode with Stripe-style glassmorphism and animated fantasy backgrounds.
+- **Neural Link Management**: Robust sidebar controls to Load, Purge (Unload), and track model state in real-time.
+- **PDF & Image Support**: Drop vision-capable models to chat with images, or upload PDFs for instant knowledge extraction.
+- **Thinking Indicator**: Visualizes the AI's internal "thought" process (supports `<think>` tags) with a mystical "Astral Reasoning" overlay.
+- **Performance Metrics**: Real-time tracking of tokens per second (e/s), total tokens, and generation duration.
+- **Responsive Design**: Optimized for both high-end laptops and mobile devices.
 
-![Local Chatbot Interface](assets/screenshot.png)
+## 🚀 Getting Started
 
-## Getting Started
-
-1.  **Start LM Studio**: Load your preferred model and start the Local Server (usually on `http://localhost:1234`).
-2.  **Run the App**:
+1.  **Start LM Studio**: Open the "Local Server" tab and start the server (default: port 1234).
+2.  **Run the Chatbot**:
     ```bash
-    python app.py
+    streamlit run app.py
     ```
-3.  **Access**: Open your browser and navigate to `http://localhost:5000`.
+    *Or use the provided `run_chatbot.bat` for a one-click startup.*
 
-## Requirements
+## 📸 Screenshots
 
-*   Python 3.x
-*   Flask
-*   Requests
-*   Markdown
+### Global Terminal (Chat)
+![Chat Screenshot](screenshot_chat.png)
+
+## 🛡️ Model Control
+The sidebar provides a "Neural Core" section where you can:
+- **🔮 Load Core**: Safely unload previous models and boot up your selected AI.
+- **💀 Purge Core**: Completely free up your RAM by offloading the model with verified API confirmation.
+- **🔄 Sync List**: Instantly refresh your available models list if you download something new in LM Studio.
+
+---
+*Created for a seamless local AI experience. Powered by LM Studio & Streamlit.*
