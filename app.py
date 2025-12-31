@@ -10,91 +10,23 @@ from openai import OpenAI
 # Page config
 st.set_page_config(page_title="Local AI Chatbot", page_icon="🤖", layout="wide")
 
-# Custom CSS - Modern Dark Theme (Softer than Sci-Fi)
+# Custom CSS - Modern Dark Theme
 st.markdown("""
 <style>
-    /* Import Google Font */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
-
-    /* General Theme */
-    .stApp {
-        background-color: #0e1117; /* Standard dark background, less "void black" */
-        font-family: 'Inter', sans-serif;
-        color: #e0e0e0;
-    }
     
-    /* Headers */
-    h1, h2, h3 {
-        font-family: 'Inter', sans-serif !important;
-        background: linear-gradient(90deg, #4da6ff, #9966ff);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        font-weight: 700 !important;
-    }
-
-    /* Sidebar */
-    [data-testid="stSidebar"] {
-        background-color: #161b22;
-        border-right: 1px solid rgba(255, 255, 255, 0.1);
-    }
-    
-    /* Chat Messages */
-    .stChatMessage {
-        border-radius: 12px;
-        padding: 1rem;
-        margin-bottom: 0.5rem;
-        border: 1px solid rgba(255, 255, 255, 0.05);
-    }
-    
-    /* User Message */
-    [data-testid="stChatMessage"]:nth-child(even) {
-        background-color: rgba(77, 166, 255, 0.1);
-        border-left: 3px solid #4da6ff;
-    }
-    
-    /* AI Message */
-    [data-testid="stChatMessage"]:nth-child(odd) {
-        background-color: rgba(153, 102, 255, 0.1);
-        border-right: 3px solid #9966ff;
-    }
-
-    /* Input Fields - High Visibility */
-    .stTextInput input, .stTextArea textarea {
-        background-color: #1e2329 !important; /* Lighter dark */
-        border: 1px solid rgba(255, 255, 255, 0.2) !important;
-        color: #fff !important;
-        border-radius: 8px !important;
-    }
-    
-    .stTextInput input:focus, .stTextArea textarea:focus {
-        border-color: #4da6ff !important;
-        box-shadow: 0 0 0 1px #4da6ff !important;
-    }
-    
-    /* Buttons */
-    .stButton button {
-        background-color: #21262d;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        color: #e0e0e0;
-        transition: all 0.2s ease;
-    }
-    
-    .stButton button:hover {
-        border-color: #4da6ff;
-        color: #4da6ff;
-    }
-    
-    /* Images */
-    img {
-        border-radius: 8px;
-    }
-    
-    /* Status Container */
-    .stStatusWidget {
-        background-color: #1e2329 !important;
-        border-color: #2f363d !important;
-    }
-
+    .stApp { background-color: #0e1117; font-family: 'Inter', sans-serif; color: #e0e0e0; }
+    h1, h2, h3 { background: linear-gradient(90deg, #4da6ff, #9966ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 700 !important; }
+    [data-testid="stSidebar"] { background-color: #161b22; border-right: 1px solid rgba(255, 255, 255, 0.1); }
+    .stChatMessage { border-radius: 12px; padding: 1rem; margin-bottom: 0.5rem; border: 1px solid rgba(255, 255, 255, 0.05); }
+    [data-testid="stChatMessage"]:nth-child(even) { background-color: rgba(77, 166, 255, 0.1); border-left: 3px solid #4da6ff; }
+    [data-testid="stChatMessage"]:nth-child(odd) { background-color: rgba(153, 102, 255, 0.1); border-right: 3px solid #9966ff; }
+    .stTextInput input, .stTextArea textarea { background-color: #1e2329 !important; border: 1px solid rgba(255, 255, 255, 0.2) !important; color: #fff !important; border-radius: 8px !important; }
+    .stTextInput input:focus, .stTextArea textarea:focus { border-color: #4da6ff !important; box-shadow: 0 0 0 1px #4da6ff !important; }
+    .stButton button { background-color: #21262d; border: 1px solid rgba(255, 255, 255, 0.2); color: #e0e0e0; transition: all 0.2s ease; }
+    .stButton button:hover { border-color: #4da6ff; color: #4da6ff; }
+    img { border-radius: 8px; }
+    .stStatusWidget { background-color: #1e2329 !important; border-color: #2f363d !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -122,77 +54,98 @@ def extract_pdf_text(uploaded_file):
         st.error(f"Failed to read PDF: {str(e)}")
         return None
 
-# LMS CLI Helpers
+# LMS CLI Helpers with ROBUST State checking
 def get_lms_models():
     try:
-        # Run 'lms ls' 
+        # Use simple 'lms ls' text output parsing because JSON might be experimental or differ in versions
         result = subprocess.run("lms ls", shell=True, capture_output=True, text=True, encoding='utf-8')
         lines = result.stdout.split('\n')
         models = []
         for line in lines:
-            # Heuristic: Find lines with content but not headers
-            args = line.split()
-            if len(args) >= 3 and "GB" in line:
-                 # Usually format: NAME PARAMS ARCH SIZE
-                 models.append(args[0])
+            parts = line.split()
+            # Valid model lines usually look like: "model-name   PARAMS   ARCH ..."
+            # We filter for lines that look like model entries (have size info GB/MB)
+            if len(parts) >= 3 and ("GB" in line or "MB" in line) and "SIZE" not in line:
+                models.append(parts[0])
         return models
     except:
         return []
 
-def lms_unload_all():
-    subprocess.run("lms unload --all", shell=True)
-    
-def lms_load_model(model_key):
-    subprocess.run(f'lms load "{model_key}"', shell=True)
+def wait_for_model_state(client, should_be_loaded=True, timeout=15):
+    """Waits until a model is loaded (or unloaded)"""
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            models = client.models.list()
+            is_loaded = len(models.data) > 0
+            if is_loaded == should_be_loaded:
+                return True
+        except:
+            pass
+        time.sleep(0.5)
+    return False
+
+def check_connection(base_url):
+    try:
+        client = OpenAI(base_url=base_url, api_key="lm-studio")
+        models = client.models.list()
+        # Ensure we have a valid model ID, or None if empty
+        active_id = models.data[0].id if models.data else None
+        return client, active_id
+    except:
+        return None, None
 
 # === SIDEBAR ===
 with st.sidebar:
     st.header("⚙️ System Control")
-    
-    # Connection Settings
     base_url = st.text_input("LM Studio URL", "http://localhost:1234/v1")
     
-    # Model Manager
     st.subheader("Model Manager")
     
-    # Check Connection & Get Current Model
-    current_model = None
-    try:
-        client = OpenAI(base_url=base_url, api_key="lm-studio")
-        models = client.models.list()
-        if len(models.data) > 0:
-            current_model = models.data[0].id
-            st.success(f"🟢 Active: {current_model}")
-            
-            # Unload Button
+    # State Management
+    client_conn, active_model_id = check_connection(base_url)
+    
+    if client_conn:
+        if active_model_id:
+            st.success(f"🟢 Active: {active_model_id}")
             if st.button("🔴 Unload Model (Free RAM)", type="primary"):
                 with st.spinner("Unloading model..."):
-                    lms_unload_all()
-                    time.sleep(2)
-                    st.rerun()
+                    subprocess.run("lms unload --all", shell=True)
+                    # Wait for it to actually disappear
+                    if wait_for_model_state(client_conn, should_be_loaded=False):
+                        st.success("Model unloaded!")
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error("Unload timed out. Try again.")
         else:
             st.warning("⚪ No model loaded")
             
             # Load Interface
-            # Fetch from CLI or defaults
             known_models = get_lms_models()
             if not known_models:
+                # Fallback defaults if CLI fails
                 known_models = ["qwen/qwen3-4b-thinking-2507", "llama-3.1-8b-lexi-uncensored-v2", "dolphin-2.9-llama3-8b"]
             
             selected_load = st.selectbox("Select Model to Load", known_models)
             
             if st.button("🟢 Load Model"):
                 with st.spinner(f"Loading {selected_load}..."):
-                    lms_load_model(selected_load)
-                    time.sleep(5) # Give it time to load
-                    st.rerun()
-                    
-    except Exception as e:
-        st.error("Server Offline")
+                    subprocess.run(f'lms load "{selected_load}"', shell=True)
+                    # Wait for it to appear
+                    if wait_for_model_state(client_conn, should_be_loaded=True):
+                        st.success("Model loaded!")
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error("Load timed out or failed. Check LM Studio logs.")
+    else:
+        st.error("⚠️ Server Offline. Run 'lms server start' or check connection.")
 
     st.divider()
     system_prompt = st.text_area("System Prompt", "You are a helpful AI assistant.")
-    model_id = current_model if current_model else "local-model"
+    # Use active_model_id if available, otherwise just a placeholder to prevent crashes
+    model_id = active_model_id if active_model_id else "local-model"
 
 # === MAIN CHAT APP ===
 
@@ -207,66 +160,61 @@ for message in st.session_state.messages:
         if "image" in message and message["image"]:
             st.image(base64.b64decode(message["image"]))
 
-# Input Area Layout
+# Input Area
 with st.expander("📎 Add Attachment (Image/PDF)", expanded=False):
     uploaded_file = st.file_uploader("Choose file", type=["png", "jpg", "jpeg", "pdf"], label_visibility="collapsed")
 
-# Chat input
 if prompt := st.chat_input("Type your message..."):
     
     encoded_img = None
     pdf_text = None
     warning_msg = None
     
-    # VALIDATION
+    # 1. Validation Logic
     if uploaded_file:
         file_type = uploaded_file.type
-        
         if "image" in file_type:
             if not is_vision_model(model_id):
-                warning_msg = "⚠️ Image ignored: Model doesn't support vision. Sending text only."
+                warning_msg = "⚠️ Model likely doesn't support vision. Sending text only."
             else:
                 encoded_img = encode_image(uploaded_file)
-        
         elif "pdf" in file_type:
-            with st.spinner("Processing PDF Document..."):
+            with st.spinner("Processing PDF..."):
                 pdf_text = extract_pdf_text(uploaded_file)
                 if pdf_text:
-                    prompt = f"Reference Document Content:\n{pdf_text}\n\n---\nUser Query: {prompt}"
+                    prompt = f"Reference PDF Content:\n{pdf_text}\n\n---\nUser Query: {prompt}"
                 else:
-                    warning_msg = "⚠️ PDF processing failed or empty."
+                    warning_msg = "⚠️ PDF empty or failed."
 
     if warning_msg: st.toast(warning_msg, icon="⚠️")
 
-    # User message
+    # 2. Add User Message
     new_message = {"role": "user", "content": prompt}
     if encoded_img: new_message["image"] = encoded_img
-    
     st.session_state.messages.append(new_message)
     
     with st.chat_message("user"):
         display_prompt = prompt
+        # Hide huge PDF text block from UI
         if pdf_text and len(pdf_text) > 200:
              display_prompt = prompt.split("User Query:")[1].strip() if "User Query:" in prompt else prompt
-             st.info(f"📄 PDF Attached: {uploaded_file.name}")
-        
+             st.info(f"📄 PDF Attached")
         st.markdown(display_prompt)
         if encoded_img: st.image(uploaded_file)
-        if warning_msg: st.caption(f"_{warning_msg}_")
 
-    # Generate response
+    # 3. Generate Response
     with st.chat_message("assistant"):
+        # BLOCKING CHECK: Ensure model is actually loaded before trying to chat
+        if not active_model_id:
+            st.error("⛔ No Model Loaded. Please load a model from the sidebar first.")
+            st.stop()
+            
         message_placeholder = st.empty()
         status_placeholder = st.empty()
         full_response = ""
         is_thinking = False
         start_time = time.time()
         token_count = 0 
-        
-        # If no model is loaded, warn user
-        if not current_model:
-            st.error("❌ No AI Model Loaded! Please load a model from the sidebar to chat.")
-            st.stop()
         
         api_messages = [{"role": "system", "content": system_prompt}]
         for m in st.session_state.messages:
