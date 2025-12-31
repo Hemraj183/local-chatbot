@@ -96,53 +96,61 @@ with st.sidebar:
     st.header("⚙️ System Control")
     base_url = st.text_input("LM Studio URL", "http://localhost:1234/v1")
     
-    st.subheader("Model Manager")
+    st.divider()
     
-    # State Management: Status Placeholder
-    status_msg = st.empty()
-    
+    # 1. Check Status
     client_conn, active_model_id = check_connection(base_url)
     
-    if client_conn:
-        if active_model_id:
-            # === GREEN STATE: Active ===
-            status_msg.success(f"🟢 Active: {active_model_id}")
-            
-            if st.button("🔴 Unload Model (Free RAM)", type="primary", use_container_width=True):
-                # FIRE AND FORGET LOGIC
-                # Assuming if the user clicks this, they want it gone.
-                with st.spinner("Disconnecting Neural Link..."):
-                    subprocess.run("lms unload --all", shell=True)
-                    time.sleep(3) # Give server 3s to clear RAM
-                    st.toast("Model Unloaded successfully!", icon="💥")
-                    st.rerun()
-        else:
-            # === RED STATE: Inactive ===
-            status_msg.error("🔴 No Model Loaded")
-            
-            # Load Interface
-            known_models = get_lms_models()
-            if not known_models:
-                known_models = ["qwen/qwen3-4b-thinking-2507", "llama-3.1-8b-lexi-uncensored-v2", "dolphin-2.9-llama3-8b"]
-            
-            selected_load = st.selectbox("Select Model to Load", known_models)
-            
-            if st.button("🟢 Load Model", type="secondary", use_container_width=True):
-                with st.spinner(f"Initiating {selected_load}..."):
-                    subprocess.run(f'lms load "{selected_load}"', shell=True)
-                    
-                    # We still wait for load, because we need it ready before chatting
-                    # Simple inline wait loop
-                    start_load = time.time()
-                    while time.time() - start_load < 45:
-                        _, new_id = check_connection(base_url)
-                        if new_id:
-                            break
-                        time.sleep(1)
-                    
-                    st.rerun()
+    # 2. visual Status Indicator
+    if client_conn and active_model_id:
+        st.success(f"🟢 **Active Model**\n\n{active_model_id}")
     else:
-        st.warning("⚠️ Server Offline. Launch 'lms server start'.")
+        st.error("🔴 **No Model Loaded**")
+        
+    st.subheader("Model Manager")
+    
+    # 3. Model Selector (Always Visible)
+    # Fetch available models from CLI or use defaults
+    known_models = get_lms_models()
+    if not known_models:
+        known_models = ["qwen/qwen3-4b-thinking-2507", "llama-3.1-8b-lexi-uncensored-v2", "dolphin-2.9-llama3-8b"]
+    
+    # Try to respect current selection
+    default_ix = 0
+    if active_model_id:
+        for i, m in enumerate(known_models):
+            if active_model_id in m or m in active_model_id:
+                default_ix = i
+                break
+                
+    selected_load = st.selectbox("Choose Model:", known_models, index=default_ix)
+    
+    # 4. Control Buttons (Side by Side)
+    col_load, col_unload = st.columns(2)
+    
+    with col_load:
+        if st.button("🟢 Load", use_container_width=True):
+            with st.spinner(f"Loading {selected_load}..."):
+                # Safety: Unload any existing first to prevent conflicts
+                subprocess.run("lms unload --all", shell=True)
+                time.sleep(1)
+                subprocess.run(f'lms load "{selected_load}"', shell=True)
+                
+                # Wait for server to pick it up
+                start_wait = time.time()
+                while time.time() - start_wait < 30:
+                    _, check_id = check_connection(base_url)
+                    if check_id:
+                        break
+                    time.sleep(1)
+                st.rerun()
+
+    with col_unload:
+        if st.button("🔴 Unload", use_container_width=True):
+             with st.spinner("Unloading..."):
+                 subprocess.run("lms unload --all", shell=True)
+                 time.sleep(2) # Short buffer
+                 st.rerun()
 
     st.divider()
     system_prompt = st.text_area("System Prompt", "You are a helpful AI assistant.")
