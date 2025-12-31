@@ -3,6 +3,8 @@ import base64
 import pypdf
 import io
 import time
+import subprocess
+import json
 from openai import OpenAI
 
 # Page config
@@ -98,18 +100,17 @@ st.markdown("""
 
 st.title("🤖 Local AI Chatbot")
 
-# Helper function to check vision capability
+# === HELPER FUNCTIONS ===
+
 def is_vision_model(model_name):
     vision_keywords = ['vision', 'llava', 'bakllava', 'moondream', 'yi-vl', 'qwen-vl', 'minicpm-v', 'cogvlm', 'clip']
     return any(keyword in model_name.lower() for keyword in vision_keywords)
 
-# Helper to encode image
 def encode_image(uploaded_file):
     if uploaded_file is not None:
         return base64.b64encode(uploaded_file.getvalue()).decode('utf-8')
     return None
 
-# Helper to extract PDF text
 def extract_pdf_text(uploaded_file):
     try:
         reader = pypdf.PdfReader(uploaded_file)
@@ -121,23 +122,79 @@ def extract_pdf_text(uploaded_file):
         st.error(f"Failed to read PDF: {str(e)}")
         return None
 
-# Sidebar settings
-with st.sidebar:
-    st.header("Settings")
-    base_url = st.text_input("LM Studio URL", "http://localhost:1234/v1")
-    model_id = st.text_input("Model ID", "local-model")
-    system_prompt = st.text_area("System Prompt", "You are a helpful AI assistant.")
+# LMS CLI Helpers
+def get_lms_models():
+    try:
+        # Run 'lms ls' 
+        result = subprocess.run("lms ls", shell=True, capture_output=True, text=True, encoding='utf-8')
+        lines = result.stdout.split('\n')
+        models = []
+        for line in lines:
+            # Heuristic: Find lines with content but not headers
+            args = line.split()
+            if len(args) >= 3 and "GB" in line:
+                 # Usually format: NAME PARAMS ARCH SIZE
+                 models.append(args[0])
+        return models
+    except:
+        return []
+
+def lms_unload_all():
+    subprocess.run("lms unload --all", shell=True)
     
-    if st.button("Test Connection"):
-        try:
-            client = OpenAI(base_url=base_url, api_key="lm-studio")
-            models = client.models.list()
-            st.success(f"Connected! Found {len(models.data)} models.")
-            if len(models.data) > 0:
-                mp = models.data[0].id
-                st.info(f"Loaded Model: {mp}")
-        except Exception as e:
-            st.error(f"Connection failed: {str(e)}")
+def lms_load_model(model_key):
+    subprocess.run(f'lms load "{model_key}"', shell=True)
+
+# === SIDEBAR ===
+with st.sidebar:
+    st.header("⚙️ System Control")
+    
+    # Connection Settings
+    base_url = st.text_input("LM Studio URL", "http://localhost:1234/v1")
+    
+    # Model Manager
+    st.subheader("Model Manager")
+    
+    # Check Connection & Get Current Model
+    current_model = None
+    try:
+        client = OpenAI(base_url=base_url, api_key="lm-studio")
+        models = client.models.list()
+        if len(models.data) > 0:
+            current_model = models.data[0].id
+            st.success(f"🟢 Active: {current_model}")
+            
+            # Unload Button
+            if st.button("🔴 Unload Model (Free RAM)", type="primary"):
+                with st.spinner("Unloading model..."):
+                    lms_unload_all()
+                    time.sleep(2)
+                    st.rerun()
+        else:
+            st.warning("⚪ No model loaded")
+            
+            # Load Interface
+            # Fetch from CLI or defaults
+            known_models = get_lms_models()
+            if not known_models:
+                known_models = ["qwen/qwen3-4b-thinking-2507", "llama-3.1-8b-lexi-uncensored-v2", "dolphin-2.9-llama3-8b"]
+            
+            selected_load = st.selectbox("Select Model to Load", known_models)
+            
+            if st.button("🟢 Load Model"):
+                with st.spinner(f"Loading {selected_load}..."):
+                    lms_load_model(selected_load)
+                    time.sleep(5) # Give it time to load
+                    st.rerun()
+                    
+    except Exception as e:
+        st.error("Server Offline")
+
+    st.divider()
+    system_prompt = st.text_area("System Prompt", "You are a helpful AI assistant.")
+    model_id = current_model if current_model else "local-model"
+
+# === MAIN CHAT APP ===
 
 # Initialize session state
 if "messages" not in st.session_state:
@@ -151,32 +208,26 @@ for message in st.session_state.messages:
             st.image(base64.b64decode(message["image"]))
 
 # Input Area Layout
-# We put the file uploader in an expander for cleaner look
 with st.expander("📎 Add Attachment (Image/PDF)", expanded=False):
     uploaded_file = st.file_uploader("Choose file", type=["png", "jpg", "jpeg", "pdf"], label_visibility="collapsed")
 
 # Chat input
 if prompt := st.chat_input("Type your message..."):
     
-    # Process Attachments
     encoded_img = None
     pdf_text = None
     warning_msg = None
     
-    # VALIDATION & PROCESSING LOGIC
+    # VALIDATION
     if uploaded_file:
         file_type = uploaded_file.type
         
-        # IMAGE HANDLER
         if "image" in file_type:
-            # Check capabilities
             if not is_vision_model(model_id):
-                # SOFT FAIL: Warn user, but allow text to pass
-                warning_msg = "⚠️ Image ignored: The current model library name doesn't imply vision capabilities. Sending text only."
+                warning_msg = "⚠️ Image ignored: Model doesn't support vision. Sending text only."
             else:
                 encoded_img = encode_image(uploaded_file)
         
-        # PDF HANDLER
         elif "pdf" in file_type:
             with st.spinner("Processing PDF Document..."):
                 pdf_text = extract_pdf_text(uploaded_file)
@@ -185,53 +236,43 @@ if prompt := st.chat_input("Type your message..."):
                 else:
                     warning_msg = "⚠️ PDF processing failed or empty."
 
-    # Show warning if needed (Toast is better than error which persists)
-    if warning_msg:
-        st.toast(warning_msg, icon="⚠️")
+    if warning_msg: st.toast(warning_msg, icon="⚠️")
 
-    # User message object
+    # User message
     new_message = {"role": "user", "content": prompt}
-    if encoded_img:
-        new_message["image"] = encoded_img
+    if encoded_img: new_message["image"] = encoded_img
     
     st.session_state.messages.append(new_message)
     
-    # Render User Message immediately
     with st.chat_message("user"):
         display_prompt = prompt
-        # Hide raw PDF text in UI to keep it clean
         if pdf_text and len(pdf_text) > 200:
              display_prompt = prompt.split("User Query:")[1].strip() if "User Query:" in prompt else prompt
              st.info(f"📄 PDF Attached: {uploaded_file.name}")
         
         st.markdown(display_prompt)
-        if encoded_img:
-            st.image(uploaded_file)
-        if warning_msg:
-             st.caption(f"_{warning_msg}_")
+        if encoded_img: st.image(uploaded_file)
+        if warning_msg: st.caption(f"_{warning_msg}_")
 
     # Generate response
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
         status_placeholder = st.empty()
-        
         full_response = ""
         is_thinking = False
-        
         start_time = time.time()
         token_count = 0 
         
-        # Construct messages for API
+        # If no model is loaded, warn user
+        if not current_model:
+            st.error("❌ No AI Model Loaded! Please load a model from the sidebar to chat.")
+            st.stop()
+        
         api_messages = [{"role": "system", "content": system_prompt}]
         for m in st.session_state.messages:
             content = [{"type": "text", "text": m["content"]}]
             if "image" in m and m["image"]:
-                content.append({
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/jpeg;base64,{m['image']}"
-                    }
-                })
+                content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{m['image']}"}})
             api_messages.append({"role": m["role"], "content": content})
 
         try:
@@ -244,21 +285,17 @@ if prompt := st.chat_input("Type your message..."):
             )
             
             response_buffer = "" 
-            
             for chunk in stream:
                 if chunk.choices[0].delta.content:
                     content_chunk = chunk.choices[0].delta.content
                     token_count += 1 
-                    
                     for char in content_chunk:
                         response_buffer += char
-                        
                         if not is_thinking:
                             if "<think>" in response_buffer:
                                 parts = response_buffer.split("<think>")
-                                real_content = parts[0]
-                                if real_content:
-                                    full_response += real_content
+                                if parts[0]: 
+                                    full_response += parts[0]
                                     message_placeholder.markdown(full_response + "▌")
                                 response_buffer = "" 
                                 is_thinking = True
@@ -269,23 +306,19 @@ if prompt := st.chat_input("Type your message..."):
                                 response_buffer = ""
                         else:
                             if "</think>" in response_buffer:
-                                response_buffer = "" # Discard </think>
+                                response_buffer = ""
                                 is_thinking = False
                                 status_placeholder.empty()
                             elif not any("</think>".startswith(response_buffer[-i:]) for i in range(1, 9)):
                                 response_buffer = ""
 
-            if response_buffer and not is_thinking:
-                full_response += response_buffer
+            if response_buffer and not is_thinking: full_response += response_buffer
             
             status_placeholder.empty()
             message_placeholder.markdown(full_response)
             
-            # Metrics
-            end_time = time.time()
-            duration = end_time - start_time
+            duration = time.time() - start_time
             tps = token_count / duration if duration > 0 else 0
-            
             metrics_msg = f"<p style='color: #888; font-size: 0.8em; margin-top: 0.5em;'>Generated {token_count} tokens • {tps:.2f} tok/s • {duration:.2f}s</p>"
             message_placeholder.markdown(full_response, unsafe_allow_html=True)
             st.markdown(metrics_msg, unsafe_allow_html=True)

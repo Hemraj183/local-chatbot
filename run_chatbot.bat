@@ -15,17 +15,19 @@ ECHO.
 ECHO =====================================================
 
 :: 2. Start LM Studio Server
-:: --bind 0.0.0.0: Allows other devices to connect (if needed)
-:: --cors true: Allows web requests from different origins
-ECHO [1/2] Starting LM Studio Server...
+ECHO [1/3] Starting LM Studio Server...
 start /MIN cmd /c "lms server start --bind 0.0.0.0 --cors true"
 
 :: Wait for server to initialize
 timeout /t 5 /nobreak >nul
 
-:: 3. Start the Chatbot App
-:: --server.address 0.0.0.0: Makes the webpage accessible to the whole network
-ECHO [2/2] Starting Chatbot Interface...
+:: 3. Auto-Load Default Model (Qwen 4B)
+:: This ensures the AI is ready immediately.
+ECHO [2/3] Auto-Loading AI Model...
+call lms load qwen/qwen3-4b-thinking-2507
+
+:: 4. Start the Chatbot App
+ECHO [3/3] Starting Chatbot Interface...
 cd /d "%~dp0"
 streamlit run app.py --server.address 0.0.0.0
 
