@@ -1,5 +1,7 @@
 import streamlit as st
 import base64
+import pypdf
+import io
 from openai import OpenAI
 
 # Page config
@@ -111,11 +113,45 @@ st.markdown("""
         border: 1px solid #00ff00 !important;
         color: #00ff00 !important;
     }
+    
+    /* Toast/Error Popups */
+    .stToast {
+        background-color: #1a0505 !important;
+        border: 1px solid #ff3333 !important;
+        color: #ffcccc !important;
+    }
 
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown('<h1 style="text-align: center;">🚀 NEURAL__LINK // SYSTEM_ACTIVE</h1>', unsafe_allow_html=True)
+
+# Helper function to check vision capability
+def is_vision_model(model_name):
+    """
+    Heuristic check to see if a model supports vision based on its name.
+    Common vision models: llava, bakllava, yap-vl, moondream, yi-vl, qwen-vl, minicpm-v
+    """
+    vision_keywords = ['vision', 'llava', 'bakllava', 'moondream', 'yi-vl', 'qwen-vl', 'minicpm-v', 'cogvlm', 'clip']
+    return any(keyword in model_name.lower() for keyword in vision_keywords)
+
+# Helper to encode image
+def encode_image(uploaded_file):
+    if uploaded_file is not None:
+        return base64.b64encode(uploaded_file.getvalue()).decode('utf-8')
+    return None
+
+# Helper to extract PDF text
+def extract_pdf_text(uploaded_file):
+    try:
+        reader = pypdf.PdfReader(uploaded_file)
+        text = ""
+        for page in reader.pages:
+            text += page.extract_text() + "\n"
+        return text.strip()
+    except Exception as e:
+        st.error(f"Failed to read PDF: {str(e)}")
+        return None
 
 # Sidebar settings
 with st.sidebar:
@@ -129,6 +165,14 @@ with st.sidebar:
             client = OpenAI(base_url=base_url, api_key="lm-studio")
             models = client.models.list()
             st.success(f"Connected! Found {len(models.data)} models.")
+            # Try to auto-detect model ID if generic 'local-model' is used
+            if len(models.data) > 0:
+                mp = models.data[0].id
+                st.info(f"Loaded Model: {mp}")
+                if is_vision_model(mp):
+                    st.success("✨ Vision Capabilities Detected")
+                else:
+                    st.warning("⚠️ No Vision Capabilities Detected in Name")
         except Exception as e:
             st.error(f"Connection failed: {str(e)}")
 
@@ -144,41 +188,65 @@ for message in st.session_state.messages:
             st.image(base64.b64decode(message["image"]))
 
 # Input area
-# Helper to encode image
-def encode_image(uploaded_file):
-    if uploaded_file is not None:
-        return base64.b64encode(uploaded_file.getvalue()).decode('utf-8')
-    return None
-
-# File uploader
-with st.popover("📎 Attach Image"):
-    uploaded_image = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"])
+with st.popover("📎 Attach File"):
+    uploaded_file = st.file_uploader("Upload Image or PDF", type=["png", "jpg", "jpeg", "pdf"])
 
 # Chat input
 if prompt := st.chat_input("Type your message..."):
-    # User message
-    new_message = {"role": "user", "content": prompt}
-    encoded_img = None
     
-    if uploaded_image:
-        encoded_img = encode_image(uploaded_image)
+    # Process Attachments
+    encoded_img = None
+    pdf_text = None
+    
+    # VALIDATION LOGIC
+    if uploaded_file:
+        file_type = uploaded_file.type
+        
+        # IMAGE HANDLER
+        if "image" in file_type:
+            # Check capabilities
+            if not is_vision_model(model_id):
+                st.error("⛔ ACCESS DENIED: The current model does not support Vision/Image inputs. Please unload this model and load a Vision-capable model (e.g., LLaVA, BakLLaVA).")
+                st.stop()
+            else:
+                encoded_img = encode_image(uploaded_file)
+        
+        # PDF HANDLER
+        elif "pdf" in file_type:
+            with st.spinner("Processing PDF Document..."):
+                pdf_text = extract_pdf_text(uploaded_file)
+                if pdf_text:
+                    # Append PDF content to prompt context transparently
+                    prompt = f"Reference Document Content:\n{pdf_text}\n\n---\nUser Query: {prompt}"
+                else:
+                    st.stop()
+
+    # User message object
+    new_message = {"role": "user", "content": prompt}
+    
+    if encoded_img:
         new_message["image"] = encoded_img
     
     st.session_state.messages.append(new_message)
     with st.chat_message("user"):
-        st.markdown(prompt)
+        # If PDF was added, show a cleaner UI message than the huge raw text
+        display_prompt = prompt
+        if pdf_text and len(pdf_text) > 200:
+             # Show truncated version in UI to keep it clean, but send full to API
+             display_prompt = prompt.split("User Query:")[1].strip() if "User Query:" in prompt else prompt
+             st.info(f"📄 PDF Attached: {uploaded_file.name}")
+        
+        st.markdown(display_prompt)
         if encoded_img:
-            st.image(uploaded_image)
+            st.image(uploaded_file)
 
     # Generate response
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
-        # Create a container for the status/thought process
         status_placeholder = st.empty()
         
         full_response = ""
         thought_buffer = ""
-
         is_thinking = False
         
         # Performance tracking
@@ -197,8 +265,6 @@ if prompt := st.chat_input("Type your message..."):
                         "url": f"data:image/jpeg;base64,{m['image']}"
                     }
                 })
-            # Clean up history for API - maybe remove old thoughts if we stored them? 
-            # For now, just sending what we have.
             api_messages.append({"role": m["role"], "content": content})
 
         try:
@@ -220,72 +286,43 @@ if prompt := st.chat_input("Type your message..."):
                     content_chunk = chunk.choices[0].delta.content
                     token_count += 1 
                     
-                    # Accumulate for parsing safety (handle split tags like < + think + >)
-                    # Simple state machine approach
-                    
-                    # We process char by char to be 100% robust against split tags
                     for char in content_chunk:
                         response_buffer += char
                         
-                        # Check state transitions
                         if not is_thinking:
-                            # Look for start tag
                             if "<think>" in response_buffer:
-                                # Found start tag. 
-                                # Everything before it is real content.
                                 parts = response_buffer.split("<think>")
                                 real_content = parts[0]
                                 if real_content:
                                     full_response += real_content
                                     message_placeholder.markdown(full_response + "▌")
-                                
-                                # Reset buffer to look for end tag, but discard the <think> tag itself
                                 response_buffer = "" 
                                 is_thinking = True
-                                # Show distinct status indicator
                                 thought_status = status_placeholder.status("Thinking...", expanded=False)
                             elif not any("<think>".startswith(response_buffer[-i:]) for i in range(1, 8)):
-                                # If we are NOT strictly in the middle of a potential tag match, 
-                                # we can safely flush the buffer to the UI to keep it snappy.
                                 full_response += response_buffer
                                 message_placeholder.markdown(full_response + "▌")
                                 response_buffer = ""
                         else:
-                            # We ARE thinking
-                            # Look for end tag
                             if "</think>" in response_buffer:
-                                # Found end tag.
-                                # Discard thought content entirely
-                                
-                                # Reset
                                 response_buffer = "" # Discard </think>
                                 is_thinking = False
-                                # Remove status indicator when done
                                 status_placeholder.empty()
                                 thought_status = None
                             elif not any("</think>".startswith(response_buffer[-i:]) for i in range(1, 9)):
-                                # Not in middle of end tag
-                                # Just consume the thought content without displaying it
                                 response_buffer = ""
 
-            # Check for any remaining buffer content
             if response_buffer:
-                if is_thinking:
-                    # Trailing thought content - ignore
-                    pass
-                else:
+                if not is_thinking:
                     full_response += response_buffer
             
-            # Finalize UI - ensure status is gone
             status_placeholder.empty()
-                
             message_placeholder.markdown(full_response)
             
             end_time = time.time()
             duration = end_time - start_time
             tps = token_count / duration if duration > 0 else 0
             
-            # Formatted like LM Studio: 'Generated 56 tokens • 2.62 tok/s • 0.38s'
             metrics_msg = f"<p style='color: #666; font-size: 0.8em; margin-top: 0.5em;'>Generated {token_count} tokens • {tps:.2f} tok/s • {duration:.2f}s</p>"
             message_placeholder.markdown(full_response, unsafe_allow_html=True)
             st.markdown(metrics_msg, unsafe_allow_html=True)
