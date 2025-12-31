@@ -99,6 +99,8 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "is_unloading" not in st.session_state:
     st.session_state.is_unloading = False
+if "unload_start_time" not in st.session_state:
+    st.session_state.unload_start_time = 0
 
 # === SIDEBAR ===
 with st.sidebar:
@@ -107,39 +109,42 @@ with st.sidebar:
     
     st.divider()
     
-    # 0. Handle Unloading Transition State
-    # Check connection first to determine real state
+    # Check current connection state
     client_conn, active_model_id = check_connection(base_url)
 
-    # If we are in 'unloading' mode, we override the display to show progress
-    # and keep checking until it's actually gone.
+    # 0. Handle Unloading Transition State
     if st.session_state.is_unloading:
-        # If active_model_id is still present, we are still waiting
-        if active_model_id:
-            st.warning(f"⏳ Unloading {active_model_id}...")
-            time.sleep(1) # Wait a bit before checking again
-            st.rerun()    # Loop until gone
-        else:
-            # It's gone! Clear flag and let the normal flow show the Red state
+        # Check if we've been waiting too long (> 10s)
+        time_waiting = time.time() - st.session_state.unload_start_time
+        if time_waiting > 10:
             st.session_state.is_unloading = False
+            st.error("⚠️ Unload timed out. Please check LM Studio manually.")
+            st.rerun()
+            
+        if active_model_id:
+            st.warning(f"⏳ Unloading {active_model_id}...\n({int(10 - time_waiting)}s remaining)")
+            time.sleep(1) 
+            st.rerun()    
+        else:
+            # Done!
+            st.session_state.is_unloading = False
+            st.success("✅ Model UNLOADED")
+            time.sleep(1)
             st.rerun()
 
-    # 1. Visual Status Indicator (Normal Flow)
-    if client_conn and active_model_id and not st.session_state.is_unloading:
-        # GREEN STATE
+    # 1. Visual Status Indicator
+    if client_conn and active_model_id:
         st.success(f"🟢 **Active Model**\n\n`{active_model_id}`")
     else:
-        # RED STATE (or if manually unloading just now)
         st.error("🔴 **No Model Loaded**")
         
     st.subheader("Model Manager")
     
-    # 2. Model Selector (Always Visible)
+    # 2. Model Selector
     known_models = get_lms_models()
     if not known_models:
         known_models = ["qwen/qwen3-4b-thinking-2507", "llama-3.1-8b-lexi-uncensored-v2", "dolphin-2.9-llama3-8b"]
     
-    # Sync dropdown with active model
     default_ix = 0
     if active_model_id:
         for i, m in enumerate(known_models):
@@ -155,17 +160,12 @@ with st.sidebar:
     with col1:
         if st.button("🟢 Load", use_container_width=True):
             with st.spinner(f"Loading {selected_load}..."):
-                # Reset unloading state if it was stuck
                 st.session_state.is_unloading = False
-                
-                # Safety first: Unload all
                 subprocess.run("lms unload --all", shell=True)
                 time.sleep(1)
-                
-                # Load new
                 subprocess.run(f'lms load "{selected_load}"', shell=True)
                 
-                # Wait for readiness
+                # Wait for load
                 start_wait = time.time()
                 while time.time() - start_wait < 45:
                     _, check_id = check_connection(base_url)
@@ -175,10 +175,16 @@ with st.sidebar:
 
     with col2:
         if st.button("🔴 Unload", use_container_width=True):
-             # Trigger the transition state
              st.session_state.is_unloading = True
+             st.session_state.unload_start_time = time.time()
              subprocess.run("lms unload --all", shell=True)
              st.rerun()
+
+    # Recovery Button if stuck
+    if st.session_state.is_unloading:
+        if st.button("Clear Stuck State", type="primary"):
+            st.session_state.is_unloading = False
+            st.rerun()
 
     st.divider()
     system_prompt = st.text_area("System Prompt", "You are a helpful AI assistant.")
@@ -235,7 +241,6 @@ if prompt := st.chat_input("Type your message..."):
 
     # 3. Generate Response
     with st.chat_message("assistant"):
-        # BLOCKING CHECK: No Model = No Chat
         if not active_model_id:
             st.error("⛔ No Model Loaded. Please load a model from the sidebar first.")
             st.stop()
