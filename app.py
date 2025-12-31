@@ -2,136 +2,104 @@ import streamlit as st
 import base64
 import pypdf
 import io
+import time
 from openai import OpenAI
 
 # Page config
 st.set_page_config(page_title="Local AI Chatbot", page_icon="🤖", layout="wide")
 
-# Custom CSS for Sci-Fi / Cyberpunk theme
+# Custom CSS - Modern Dark Theme (Softer than Sci-Fi)
 st.markdown("""
 <style>
     /* Import Google Font */
-    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&family=Rajdhani:wght@300;500;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
 
-    /* General Reset & Theme */
+    /* General Theme */
     .stApp {
-        background-color: #050510;
-        background-image: 
-            radial-gradient(circle at 10% 20%, rgba(0, 242, 255, 0.05) 0%, transparent 20%),
-            radial-gradient(circle at 90% 80%, rgba(112, 0, 255, 0.05) 0%, transparent 20%);
-        font-family: 'Rajdhani', sans-serif;
+        background-color: #0e1117; /* Standard dark background, less "void black" */
+        font-family: 'Inter', sans-serif;
         color: #e0e0e0;
     }
     
     /* Headers */
     h1, h2, h3 {
-        font-family: 'Orbitron', sans-serif !important;
-        background: linear-gradient(90deg, #00f2ff, #7000ff);
+        font-family: 'Inter', sans-serif !important;
+        background: linear-gradient(90deg, #4da6ff, #9966ff);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        letter-spacing: 2px;
-        text-shadow: 0 0 10px rgba(0, 242, 255, 0.3);
+        font-weight: 700 !important;
     }
 
     /* Sidebar */
     [data-testid="stSidebar"] {
-        background-color: #0a0a16;
-        border-right: 1px solid rgba(0, 242, 255, 0.1);
-        box-shadow: 5px 0 15px rgba(0,0,0,0.5);
+        background-color: #161b22;
+        border-right: 1px solid rgba(255, 255, 255, 0.1);
     }
     
     /* Chat Messages */
     .stChatMessage {
         border-radius: 12px;
-        padding: 1.5rem;
-        margin-bottom: 1rem;
+        padding: 1rem;
+        margin-bottom: 0.5rem;
         border: 1px solid rgba(255, 255, 255, 0.05);
-        backdrop-filter: blur(5px);
-        transition: all 0.3s ease;
     }
     
     /* User Message */
     [data-testid="stChatMessage"]:nth-child(even) {
-        background: linear-gradient(135deg, rgba(0, 242, 255, 0.05) 0%, rgba(0, 242, 255, 0.01) 100%);
-        border-left: 3px solid #00f2ff;
-        box-shadow: -5px 5px 15px rgba(0, 242, 255, 0.05);
+        background-color: rgba(77, 166, 255, 0.1);
+        border-left: 3px solid #4da6ff;
     }
     
     /* AI Message */
     [data-testid="stChatMessage"]:nth-child(odd) {
-        background: linear-gradient(135deg, rgba(112, 0, 255, 0.05) 0%, rgba(112, 0, 255, 0.01) 100%);
-        border-right: 3px solid #7000ff;
-        box-shadow: 5px 5px 15px rgba(112, 0, 255, 0.05);
+        background-color: rgba(153, 102, 255, 0.1);
+        border-right: 3px solid #9966ff;
     }
 
-    /* Input Area */
+    /* Input Fields - High Visibility */
     .stTextInput input, .stTextArea textarea {
-        background-color: rgba(255, 255, 255, 0.03) !important;
-        border: 1px solid rgba(0, 242, 255, 0.2) !important;
+        background-color: #1e2329 !important; /* Lighter dark */
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
         color: #fff !important;
         border-radius: 8px !important;
-        font-family: 'Rajdhani', sans-serif;
     }
     
     .stTextInput input:focus, .stTextArea textarea:focus {
-        border-color: #00f2ff !important;
-        box-shadow: 0 0 10px rgba(0, 242, 255, 0.2) !important;
+        border-color: #4da6ff !important;
+        box-shadow: 0 0 0 1px #4da6ff !important;
     }
     
     /* Buttons */
     .stButton button {
-        background: linear-gradient(45deg, #0a0a16, #1a1a2e);
-        border: 1px solid #00f2ff;
-        color: #00f2ff;
-        font-family: 'Orbitron', sans-serif;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        transition: all 0.3s ease;
+        background-color: #21262d;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: #e0e0e0;
+        transition: all 0.2s ease;
     }
     
     .stButton button:hover {
-        background: #00f2ff;
-        color: #000;
-        box-shadow: 0 0 15px rgba(0, 242, 255, 0.5);
+        border-color: #4da6ff;
+        color: #4da6ff;
     }
     
     /* Images */
     img {
         border-radius: 8px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
     }
     
-    /* Code Blocks */
-    code {
-        font-family: 'Consolas', monospace;
-        color: #ff79c6;
-    }
-    
-    /* Expander / Status */
+    /* Status Container */
     .stStatusWidget {
-        background-color: rgba(0, 255, 0, 0.05) !important;
-        border: 1px solid #00ff00 !important;
-        color: #00ff00 !important;
-    }
-    
-    /* Toast/Error Popups */
-    .stToast {
-        background-color: #1a0505 !important;
-        border: 1px solid #ff3333 !important;
-        color: #ffcccc !important;
+        background-color: #1e2329 !important;
+        border-color: #2f363d !important;
     }
 
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<h1 style="text-align: center;">🚀 NEURAL__LINK // SYSTEM_ACTIVE</h1>', unsafe_allow_html=True)
+st.title("🤖 Local AI Chatbot")
 
 # Helper function to check vision capability
 def is_vision_model(model_name):
-    """
-    Heuristic check to see if a model supports vision based on its name.
-    Common vision models: llava, bakllava, yap-vl, moondream, yi-vl, qwen-vl, minicpm-v
-    """
     vision_keywords = ['vision', 'llava', 'bakllava', 'moondream', 'yi-vl', 'qwen-vl', 'minicpm-v', 'cogvlm', 'clip']
     return any(keyword in model_name.lower() for keyword in vision_keywords)
 
@@ -165,14 +133,9 @@ with st.sidebar:
             client = OpenAI(base_url=base_url, api_key="lm-studio")
             models = client.models.list()
             st.success(f"Connected! Found {len(models.data)} models.")
-            # Try to auto-detect model ID if generic 'local-model' is used
             if len(models.data) > 0:
                 mp = models.data[0].id
                 st.info(f"Loaded Model: {mp}")
-                if is_vision_model(mp):
-                    st.success("✨ Vision Capabilities Detected")
-                else:
-                    st.warning("⚠️ No Vision Capabilities Detected in Name")
         except Exception as e:
             st.error(f"Connection failed: {str(e)}")
 
@@ -187,9 +150,10 @@ for message in st.session_state.messages:
         if "image" in message and message["image"]:
             st.image(base64.b64decode(message["image"]))
 
-# Input area
-with st.popover("📎 Attach File"):
-    uploaded_file = st.file_uploader("Upload Image or PDF", type=["png", "jpg", "jpeg", "pdf"])
+# Input Area Layout
+# We put the file uploader in an expander for cleaner look
+with st.expander("📎 Add Attachment (Image/PDF)", expanded=False):
+    uploaded_file = st.file_uploader("Choose file", type=["png", "jpg", "jpeg", "pdf"], label_visibility="collapsed")
 
 # Chat input
 if prompt := st.chat_input("Type your message..."):
@@ -197,8 +161,9 @@ if prompt := st.chat_input("Type your message..."):
     # Process Attachments
     encoded_img = None
     pdf_text = None
+    warning_msg = None
     
-    # VALIDATION LOGIC
+    # VALIDATION & PROCESSING LOGIC
     if uploaded_file:
         file_type = uploaded_file.type
         
@@ -206,8 +171,8 @@ if prompt := st.chat_input("Type your message..."):
         if "image" in file_type:
             # Check capabilities
             if not is_vision_model(model_id):
-                st.error("⛔ ACCESS DENIED: The current model does not support Vision/Image inputs. Please unload this model and load a Vision-capable model (e.g., LLaVA, BakLLaVA).")
-                st.stop()
+                # SOFT FAIL: Warn user, but allow text to pass
+                warning_msg = "⚠️ Image ignored: The current model library name doesn't imply vision capabilities. Sending text only."
             else:
                 encoded_img = encode_image(uploaded_file)
         
@@ -216,29 +181,34 @@ if prompt := st.chat_input("Type your message..."):
             with st.spinner("Processing PDF Document..."):
                 pdf_text = extract_pdf_text(uploaded_file)
                 if pdf_text:
-                    # Append PDF content to prompt context transparently
                     prompt = f"Reference Document Content:\n{pdf_text}\n\n---\nUser Query: {prompt}"
                 else:
-                    st.stop()
+                    warning_msg = "⚠️ PDF processing failed or empty."
+
+    # Show warning if needed (Toast is better than error which persists)
+    if warning_msg:
+        st.toast(warning_msg, icon="⚠️")
 
     # User message object
     new_message = {"role": "user", "content": prompt}
-    
     if encoded_img:
         new_message["image"] = encoded_img
     
     st.session_state.messages.append(new_message)
+    
+    # Render User Message immediately
     with st.chat_message("user"):
-        # If PDF was added, show a cleaner UI message than the huge raw text
         display_prompt = prompt
+        # Hide raw PDF text in UI to keep it clean
         if pdf_text and len(pdf_text) > 200:
-             # Show truncated version in UI to keep it clean, but send full to API
              display_prompt = prompt.split("User Query:")[1].strip() if "User Query:" in prompt else prompt
              st.info(f"📄 PDF Attached: {uploaded_file.name}")
         
         st.markdown(display_prompt)
         if encoded_img:
             st.image(uploaded_file)
+        if warning_msg:
+             st.caption(f"_{warning_msg}_")
 
     # Generate response
     with st.chat_message("assistant"):
@@ -246,11 +216,8 @@ if prompt := st.chat_input("Type your message..."):
         status_placeholder = st.empty()
         
         full_response = ""
-        thought_buffer = ""
         is_thinking = False
         
-        # Performance tracking
-        import time
         start_time = time.time()
         token_count = 0 
         
@@ -276,10 +243,7 @@ if prompt := st.chat_input("Type your message..."):
                 temperature=0.7,
             )
             
-            # State for parsing
             response_buffer = "" 
-            is_thinking = False
-            thought_status = None
             
             for chunk in stream:
                 if chunk.choices[0].delta.content:
@@ -298,7 +262,7 @@ if prompt := st.chat_input("Type your message..."):
                                     message_placeholder.markdown(full_response + "▌")
                                 response_buffer = "" 
                                 is_thinking = True
-                                thought_status = status_placeholder.status("Thinking...", expanded=False)
+                                status_placeholder.status("Thinking...", expanded=False)
                             elif not any("<think>".startswith(response_buffer[-i:]) for i in range(1, 8)):
                                 full_response += response_buffer
                                 message_placeholder.markdown(full_response + "▌")
@@ -308,22 +272,21 @@ if prompt := st.chat_input("Type your message..."):
                                 response_buffer = "" # Discard </think>
                                 is_thinking = False
                                 status_placeholder.empty()
-                                thought_status = None
                             elif not any("</think>".startswith(response_buffer[-i:]) for i in range(1, 9)):
                                 response_buffer = ""
 
-            if response_buffer:
-                if not is_thinking:
-                    full_response += response_buffer
+            if response_buffer and not is_thinking:
+                full_response += response_buffer
             
             status_placeholder.empty()
             message_placeholder.markdown(full_response)
             
+            # Metrics
             end_time = time.time()
             duration = end_time - start_time
             tps = token_count / duration if duration > 0 else 0
             
-            metrics_msg = f"<p style='color: #666; font-size: 0.8em; margin-top: 0.5em;'>Generated {token_count} tokens • {tps:.2f} tok/s • {duration:.2f}s</p>"
+            metrics_msg = f"<p style='color: #888; font-size: 0.8em; margin-top: 0.5em;'>Generated {token_count} tokens • {tps:.2f} tok/s • {duration:.2f}s</p>"
             message_placeholder.markdown(full_response, unsafe_allow_html=True)
             st.markdown(metrics_msg, unsafe_allow_html=True)
             
