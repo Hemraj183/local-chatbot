@@ -56,25 +56,29 @@ def extract_pdf_text(uploaded_file):
 
 # LMS CLI Helpers with ROBUST State checking
 def get_lms_models():
-    """Parses 'lms ls' output rigorously."""
+    """
+    Parses 'lms ls' output to get a list of available models.
+    """
     try:
+        # Run lms ls
         result = subprocess.run("lms ls", shell=True, capture_output=True, text=True, encoding='utf-8')
         lines = result.stdout.split('\n')
         models = []
+        
+        # Output headers etc.
         for line in lines:
             line = line.strip()
             if not line: continue
             
-            # Skip headers/info
+            # Skip headers or informational lines
             if "LLM" in line and "ARCH" in line: continue 
-            if "You have" in line: continue
-            if "EMBEDDING" in line: continue # skip embeddings for chat
+            if "You have" in line and "models" in line: continue
             
             parts = line.split()
             if len(parts) >= 2:
-                # Basic check: first part is model name, line contains size indicators
-                if "GB" in line or "MB" in line:
-                    models.append(parts[0])
+                if parts[0] in ["EMBEDDING", "identifier"]: continue
+                models.append(parts[0])
+                
         return models
     except:
         return []
@@ -113,11 +117,10 @@ with st.sidebar:
     if not known_models:
         known_models = ["qwen/qwen3-4b-thinking-2507", "llama-3.1-8b-lexi-uncensored-v2", "dolphin-2.9-llama3-8b"]
     
-    # Logic to auto-select the active model in the dropdown
+    # Sync dropdown with active model
     default_ix = 0
     if active_model_id:
         for i, m in enumerate(known_models):
-            # Check for exact match or substring match (some CLIs truncate or format differently)
             if active_model_id == m or active_model_id in m or m in active_model_id:
                 default_ix = i
                 break
@@ -149,7 +152,14 @@ with st.sidebar:
         if st.button("🔴 Unload", use_container_width=True):
              with st.spinner("Unloading..."):
                  subprocess.run("lms unload --all", shell=True)
-                 time.sleep(2) # Fire and forget wait
+                 
+                 # Verify unload (Poll until gone)
+                 start_wait = time.time()
+                 while time.time() - start_wait < 10:
+                     _, check_id = check_connection(base_url)
+                     if not check_id: break # Confirmed gone
+                     time.sleep(1)
+                 
                  st.rerun()
 
     st.divider()
